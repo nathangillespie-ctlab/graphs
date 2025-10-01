@@ -1,26 +1,143 @@
+---
+config:
+  layout: fixed
+---
 flowchart TD
-    A(fan start command received) --> B{Go shopping}
-    B -->|no| C[Abort Start Up sequence]
-    B -->|yes| D(Set to open <br>SA <br>RA <br>OA)
-    D --> E(VFD Ramp up<br>to set<br>minimum speed)
-    E --> F{Dampers open in 30 seconds}
-    F --> |No| G[Generate Alarm until locked out<br>Requires FMS reset]
-    G--> I[Manual Reset] --> A
-    F --> |yes| H{Damper Position Switches check}
-    H --> |no|J(Wait for damper position confirmation) --> H
-    H --> |yes|K(VFD Ramp up at defined rate) 
-    K --> L{Forward flow > 20%}
-    L --> |no|M[generate air handler airflow alarm until locked out] --> I
-    L --> |yes|N(VFD continues <br> ramping up until<br>under pressure)
-    N --> O(Temperature control loops enabled)
-    O --> P[Start-up Sequence Complete]
-    P -->Q(normal operation)
-    Q --> R[SHUTDOWN]
-    R --> S{Fan OFF command received} --> Q
-    T[VFD Hand-Off-Auto mode] --> U(Hand mode) 
-    T --> W(Auto Mode) 
-    T --> Y(Off Mode) --> Z(PLC Disabled) 
-    U --> V(Local Manual Control<br><br>• Start/Stop at VFD Panel<br>• Speed Adjusted Locally<br>• Status Displayed at VFD & FMS)
-    W --> X(PLC/FMS Remote Control:<br>• Start/Stop from PLC<br>• Speed Set via FMS by Operato)
-    X --> AA{Start command from the PLC} --> AB(Standby Mode)
-    AA-->AC(PLC commanded to run)
+    A("fan start command received") --> B{"Safeties not tripped"}
+    B -- no --> C["Abort Start Up sequence"]
+    B -- yes --> D("Set to open <br>SA <br>RA <br>OA")
+    D --> E("VFD Ramp up<br>to set<br>minimum speed")
+    E --> F{"Dampers open in 30 seconds"}
+    F -- No --> G["Generate Alarm until locked out<br>Requires FMS reset"]
+    G --> I["Manual Reset"]
+    I --> A
+    F -- yes --> H{"Damper Position Switches check"}
+    H -- no --> J("Wait for damper position confirmation")
+    J --> H
+    H -- yes --> K("VFD Ramp up at defined rate")
+    K --> L{"Forward flow > 20%"}
+    L -- no --> M["generate air handler airflow alarm until locked out"]
+    M --> I
+    L -- yes --> N("VFD continues <br> ramping up until<br>under pressure")
+    N --> O("Temperature control loops enabled")
+    O --> P["Start-up Sequence Complete"]
+    P --> Q["normal operation"]
+    Q --> R["SHUTDOWN"]
+    T["VFD Hand-Off-Auto mode"] --> U("Hand mode") & W("Auto Mode") & Y("Off Mode")
+    Y --> Z("PLC Disabled")
+    U --> V("Local Manual Control<br><br>• Start/Stop at VFD Panel<br>• Speed Adjusted Locally<br>• Status Displayed at VFD &amp; FMS")
+    W --> X("PLC/FMS Remote Control:<br>• Start/Stop from PLC<br>• Speed Set via FMS by Operato")
+    X --> AA{"Start command from the PLC"}
+    AA --> AB("Standby Mode") & AC("PLC commanded to run")
+    AC --> AD{"VFD Running Status active within 8 seconds"}
+    AD --> A & AE("VFD Fail to run Alarm activated")
+    n2@{ label: "<span></span><span></span><span style=\"white-space:\">DAMPERS closes  </span><br><span style=\"white-space:\">after 30 seconds</span>" } --> n3["Shutdown Sequence complete"] & M
+    n4["Heating coil<br>"] --> n6["Manual"] & n5["Auto"] & n18["Local"] & n19["Remote"]
+    n11["Operator Input"] --> n12["Controller output"] & n18
+    n6 --> n11
+    n5 --> n10["PID Calculation"] & n22["GAH Running"] & CLG_ACTIVE["Cooling > 1%?"] & HEAT_ACTIVE["Heating > 1%?"]
+    n7["Cooling coil<br>"] --> n6 & n5 & n19 & n18
+    n10 --> n12
+    n13["Tuning parameters"] --> n10
+    n14["Process variable"] --> n10
+    n15["Set Point"] --> n10
+    n18 --> n15
+    n22 --> n23["Heating coil out put 0%"] & n24["cooling coil output 0%"]
+    n26["Reset"] --> n7 & n4 & n12
+    n25["Primary area temperature controller"] --> n26
+    n31["return air"] --> n28["Damper open indicator"]
+    n30["Supply air"] --> n28
+    n29["Outside air"] --> n28
+    n28 --> R
+    n36@{ label: "<span style=\"padding-left:\">YS-</span><span style=\"padding-left:\">105-xxx-15B</span>" } --> R
+    n35["YS-105-xxx-15A"] --> R
+    n32["PSH-105-xxx-11"] --> R
+    n37["LSH-105-xxx-06/08"] --> R
+    n34["TSL-105-xxx-07"] --> R
+    Q -- Fan OFF cmd --> R_SHUT(("Shutdown Sequence"))
+    R_SHUT --> DLY("Predetermined time delay")
+    DLY --> CLOSE_DMP("Close SA / RA / OA dampers")
+    CLOSE_DMP --> DISABLE_LOOPS("Disable heating/cooling loops")
+    DISABLE_LOOPS --> COAST("Allow fan to coast (no dynamic brake)")
+    COAST --> n2
+    ECON{{"Economizer Enabled?"}} -- OAT ≥ 70°F --> MIN_OA["Min OA 5600 CFM; Economizer OFF"]
+    ECON -- 45°F &lt; OAT &lt; 70°F --> OA9400["Economizer ON; OA ≈ 9400 CFM"]
+    ECON -- OAT ≤ 45°F --> MIX70["Inverse OA/RA to hold MAT ≈ 70°F"]
+    RELIEF["Relief Mode?"] -- Yes --> OA100["Force 100% OA"]
+    RELIEF -- No (exit) --> DECAY["Decrease OA 5%/s to Minimum"]
+    VFD_RUN["VFD Running &lt; 60s?"] -- Yes --> MA_OUT0["Force MA Controller Output = 0%"]
+    VFD_RUN -- No --> MA_MIN["Set to Minimum Airflow unless Economizer ON"]
+    DP["SA Dewpoint PID"] --> MAXSEL{{"Max-Select"}}
+    CLG["Cooling Temp PID"] --> MAXSEL
+    MAXSEL --> TCVB["Cooling Coil Valve Command"]
+    FREEZE["Freeze Stat Alarm"] -- Active --> HEAT100["Heating Valve = 100% (open)"]
+    FREEZE --> SHUT_ALL["Shut unit; close dampers"]
+    CLG_ACTIVE --> n23
+    HEAT_ACTIVE --> n24
+    SHUT_ALL --> I
+    R --> R_SHUT
+    n2@{ shape: diam}
+    n3@{ shape: rect}
+    n4@{ shape: rect}
+    n6@{ shape: rounded}
+    n5@{ shape: rounded}
+    n18@{ shape: rounded}
+    n19@{ shape: rounded}
+    n11@{ shape: rounded}
+    n12@{ shape: rounded}
+    n10@{ shape: rounded}
+    n22@{ shape: diam}
+    n7@{ shape: rect}
+    n13@{ shape: rounded}
+    n14@{ shape: rounded}
+    n15@{ shape: rounded}
+    n23@{ shape: rounded}
+    n24@{ shape: rounded}
+    n26@{ shape: diam}
+    n25@{ shape: rect}
+    n31@{ shape: rounded}
+    n28@{ shape: proc}
+    n30@{ shape: rounded}
+    n29@{ shape: rounded}
+    n36@{ shape: rounded}
+    n35@{ shape: rounded}
+    n32@{ shape: rounded}
+    n37@{ shape: rounded}
+    n34@{ shape: rounded}
+    RELIEF@{ shape: diam}
+    style A fill:#2962FF
+    style B fill:#00C853
+    style C fill:#D50000
+    style D fill:#2962FF
+    style E fill:#2962FF
+    style F fill:#00C853
+    style G fill:#D50000
+    style I fill:#FFCDD2
+    style H fill:#00C853
+    style J fill:#2962FF
+    style K fill:#2962FF
+    style L fill:#00C853
+    style M fill:#D50000
+    style N fill:#2962FF
+    style O fill:#2962FF
+    style P fill:#C8E6C9
+    style Q fill:#2962FF
+    style R fill:#C8E6C9
+    style AA fill:#00C853
+    style AB fill:#2962FF
+    style AC fill:#2962FF
+    style AD fill:#00C853
+    style AE fill:#D50000
+    style n2 fill:#00C853
+    style n3 fill:#C8E6C9
+    style n4 fill:#FF6D00
+    style n11 fill:#FF6D00
+    style n12 fill:#FF6D00
+    style n10 fill:#FF6D00
+    style n22 fill:#00C853
+    style n7 fill:#FF6D00
+    style n26 fill:#FFCDD2
+    style n25 fill:#FF6D00
+    style RELIEF fill:#00C853
+    style OA100 fill:#2962FF
+    style DECAY fill:#2962FF
