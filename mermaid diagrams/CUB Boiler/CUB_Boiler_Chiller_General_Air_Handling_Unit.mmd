@@ -1,0 +1,26 @@
+flowchart TD
+    A(fan start command received) --> B{Go shopping}
+    B -->|no| C[Abort Start Up sequence]
+    B -->|yes| D(Set to open <br>SA <br>RA <br>OA)
+    D --> E(VFD Ramp up<br>to set<br>minimum speed)
+    E --> F{Dampers open in 30 seconds}
+    F --> |No| G[Generate Alarm until locked out<br>Requires FMS reset]
+    G--> I[Manual Reset] --> A
+    F --> |yes| H{Damper Position Switches check}
+    H --> |no|J(Wait for damper position confirmation) --> H
+    H --> |yes|K(VFD Ramp up at defined rate) 
+    K --> L{Forward flow > 20%}
+    L --> |no|M[generate air handler airflow alarm until locked out] --> I
+    L --> |yes|N(VFD continues <br> ramping up until<br>under pressure)
+    N --> O(Temperature control loops enabled)
+    O --> P[Start-up Sequence Complete]
+    P -->Q(normal operation)
+    Q --> R[SHUTDOWN]
+    R --> S{Fan OFF command received} --> Q
+    T[VFD Hand-Off-Auto mode] --> U(Hand mode) 
+    T --> W(Auto Mode) 
+    T --> Y(Off Mode) --> Z(PLC Disabled) 
+    U --> V(Local Manual Control<br><br>• Start/Stop at VFD Panel<br>• Speed Adjusted Locally<br>• Status Displayed at VFD & FMS)
+    W --> X(PLC/FMS Remote Control:<br>• Start/Stop from PLC<br>• Speed Set via FMS by Operato)
+    X --> AA{Start command from the PLC} --> AB(Standby Mode)
+    AA-->AC(PLC commanded to run)
